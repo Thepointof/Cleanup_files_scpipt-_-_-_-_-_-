@@ -1,8 +1,7 @@
-from prep import get_args, is_folder_exist, prepare_archive, log_in_folder
+from prep import get_args, is_folder_exist, prepare_archive, log_in_folder, is_locked
 from printing import hello_message, finding_message, time_message, repo, moved_mes
-import sys
 import datetime
-import shutil
+import zipfile
 import logging
 from pathlib import Path
 
@@ -12,6 +11,8 @@ if __name__ == "__main__":
     folder = is_folder_exist(folder_path)
     archive = prepare_archive(folder)
     log_is_in_folder = log_in_folder(folder)
+    archive_path = prepare_archive(folder)
+    archive_created = False
 
     logging.basicConfig(filename=str(log_is_in_folder), level=logging.INFO, format='%(asctime)s - %(message)s') # создаем лог о проделанной работе
 
@@ -37,11 +38,24 @@ if __name__ == "__main__":
 
         # Проверяем возраст файла, если он подходит, перемещаем в папку 'архив'
         if age > days_limit:
-            shutil.move(str(item), str(archive / item.name))
-            files_counter['перемещено'] += 1 # Считаем сколько файлов было перемещено
-            moved_mes(item.name)
-            logging.info(f'Файл {item.name} перемещен в архив')
-
+            while True:
+                if is_locked(item):
+                    print(f'Файл {item.name} занят, нельзя перенести в архив.')
+                    input("Нажмите Enter когда закроете файл.")
+                else:
+                    break
+            with zipfile.ZipFile(archive_path, "a") as zf: # Открываем архив, если его нет создаем параллельно
+                zf.write(item, arcname = item.name) # Задаем пармаетр записи, что помещать в архив нужно проверяемый фал и назвать его нужно именем файла
+            archive_created = True # Отмечаем что архив создан
+            with zipfile.ZipFile(archive_path, "r") as zf: # Открываем архив в режиме чтения
+                if item.name in zf.namelist(): # Проверяем, если в архиве есть файл с указанным именем
+                    item.unlink() # Удаляем перемещенный файл, вне архива
+                    files_counter['перемещено'] += 1 # Считаем сколько файлов было перемещено
+                    moved_mes(item.name)
+                    logging.info(f'Файл {item.name} перемещен в архив')
+                else:
+                    logging.error(f'файл {item.name} не попал в архив, оригинал оставлен')
+           
         # Если файл не перемещается в архив счётчик 'оставленных' файлов прибавляется
         else:
             files_counter['оставленно'] += 1
@@ -51,3 +65,5 @@ if __name__ == "__main__":
                 f'перемещено {files_counter["перемещено"]}, '
                 f'оставлено {files_counter["оставленно"]}')
 
+
+        
